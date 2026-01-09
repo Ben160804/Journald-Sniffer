@@ -1,6 +1,8 @@
 from systemd import journal
 from connection import connectdb, closedbconn
 from datetime import datetime
+from json_guard import is_json_safe
+import json
 
 
 def read():
@@ -26,7 +28,8 @@ def read():
             prog = i['_COMM'] if i['_COMM'] else None
             hostName = i['_HOSTNAME'] if i['_HOSTNAME'] else None
             processID = i['_PID']
-            rawMsg = str(i)
+            eventTimestamp = i['__REALTIME_TIMESTAMP']
+            rawMsg = json.dumps(is_json_safe(i))
             logSource = 'journald'
             ingestionTimestamp = datetime.now()
             jCursor = i['__CURSOR']
@@ -35,14 +38,16 @@ def read():
                 program,
                 hostname,
                 ingestion_time,
+                event_time,
                 pid,
                 raw_msg,
                 log_source,
                 journal_cursor
-            )VALUES(%s,%s,%s,%s,%s,%s,%s)""", (
+            )VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""", (
                            prog,
                            hostName,
                            ingestionTimestamp,
+                           eventTimestamp,
                            processID,
                            rawMsg,
                            logSource,
@@ -70,8 +75,9 @@ def read():
             prog = i['_COMM'] if i['_COMM'] else None
             hostName = i['_HOSTNAME'] if i['_HOSTNAME'] else None
             processID = i['_PID']
-            rawMsg = str(i)
+            rawMsg = json.dumps(is_json_safe(i))
             logSource = 'journald'
+            eventTimestamp = i['__REALTIME_TIMESTAMP']
             ingestionTimestamp = datetime.now()
             jCursor = i['__CURSOR']
 
@@ -85,14 +91,16 @@ def read():
                 program,
                 hostname,
                 ingestion_time,
+                event_time,
                 pid,
                 raw_msg,
                 log_source,
                 journal_cursor
-            )VALUES(%s,%s,%s,%s,%s,%s,%s)""", (
+            )VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""", (
                            prog,
                            hostName,
                            ingestionTimestamp,
+                           eventTimestamp,
                            processID,
                            rawMsg,
                            logSource,
