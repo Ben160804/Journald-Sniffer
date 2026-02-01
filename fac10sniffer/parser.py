@@ -1,42 +1,88 @@
 from connection import connectdb, closedbconn
 import ast
 
+ 
+
+class raw_fact:
+    __slots__= (
+        "raw_id",
+        "jcursor",
+        "time",
+        "program",
+        "pid",
+        "uid",
+        "username",
+        "src_ip",
+        "message",
+        "host_name",
+    )
+
+    def __init__(self,raw_id,jcursor,time,program,pid,uid,username,src_ip,message,host_name,):
+        self.raw_id = raw_id
+        self.jcursor = jcursor
+        self.time = time
+        self.program = program
+        self.pid = pid
+        self.uid = uid
+        self.username = username
+        self.src_ip = src_ip
+        self.message = message
+        self.host_name = host_name
+
+
+
+distinct_progs = ['sudo', 'su', 'sshd-session']
+
 
 def parse_rawlog():
     conn = connectdb()
     cursor = conn.cursor()
+    print("REACHED A")
+
     cursor.execute('''
-    select * from auth_logs
-    ''')
-    auth_entry = cursor.fetchone()
-    if auth_entry is None:
+   select max(jcursor) from auth_logs;  
+   ''') 
+    last_derived_cursor = cursor.fetchone()[0]
+    print(last_derived_cursor)
+    if last_derived_cursor != None:
         cursor.execute('''
-        select max(journal_cursor) from raw_logs
-                       ''')
-        max_jcursor_rlogs = cursor.fetchone()
-
-        # id,pid,program,hostname,outcome,event time
-        # raw_log_id,jcursor(same as raw_log)
-        cursor.execute('''
-        select id,program,hostname,ingestion_time,pid,raw_msg,
-        log_source,journal_cursor from raw_logs where journal_cursor <= %s order by journal_cursor
-        ''', max_jcursor_rlogs)
+        select * from raw_logs where journal_cursor > %s order by journal_cursor asc;
+        ''',last_derived_cursor)
         raw_logs = cursor.fetchall()
-
-        for i in raw_logs:
-            raw_log = i[5]
-            program = raw_log['_COMM']
-            hostname = i[2]
-            pid = raw_log['_PID']
-            raw_log = i[5]
-           # print(raw_log)
-            logsource = "journald"
-            jcursor = i[7]
-           # print(program, hostname, pid, logsource, jcursor)
-            eventTimestamp = raw_log['__REALTIME_TIMESTAMP']
-            message = raw_log['MESSAGE']
-
-            print(message)
-
+    else:
+        cursor.execute('''
+        select * from raw_logs;
+                       ''')
+        raw_logs = cursor.fetchall()
+    buffer = {}
+    for i in raw_logs:
+        raw_id = i[0]
+        program = i[1]
+        host_name = i[2]
+        event_time = i[4]
+        pid = i[5]
+        payload = i[6]
+        journal_cursor = i[8]
+        uid = payload.get("_UID")
+        message = payload.get("MESSAGE")
+        src_ip = None
+        username = None
+        fact = raw_fact(raw_id = raw_id,
+                        program = program,
+                        host_name = host_name,
+                        time = event_time,
+                        pid = pid,
+                        uid = uid,
+                        src_ip = src_ip,
+                        username = username,
+                        jcursor = journal_cursor,
+                        message = message,
+                        )
+        print(fact)
+     
 
 parse_rawlog()
+
+
+
+
