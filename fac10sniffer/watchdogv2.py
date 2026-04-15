@@ -1,3 +1,5 @@
+from connection import connectdb, closedbconn
+
 BRUTE_FORCE_TOTAL = 5
 SCAN_NEUTRAL_TOTAL = 12
 WINDOW_MINUTES = 10

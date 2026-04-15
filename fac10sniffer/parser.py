@@ -3,8 +3,9 @@ from connection import connectdb, closedbconn
 from datetime import timedelta
 from emitter import persist_auth_event
 import re
-
-IP_RE = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b') #gpt hooked me up
+from llm import classify_with_llm
+IP_RE = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b')
+IPV6_RE = re.compile(r'(?:[0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}')
 VALID_OUTCOMES = {"success", "failure", "neutral"}
 AUTH_PROGS = {"sudo", "su", "sshd-session"}
 WINDOW_SECONDS = 60
@@ -75,7 +76,8 @@ class AuthBuffer:
         "failure_count",
         "success_count",
         "neutral_count",
-        "hostname"
+        "hostname",
+        "messages",
     )
 
     def __init__(self, fact):
@@ -98,6 +100,7 @@ class AuthBuffer:
         self.success_count = 0
         self.neutral_count = 0
         self.hostname = fact.host_name
+        self.messages = [fact.message]
 
         self._ingest(fact)
 
@@ -129,6 +132,7 @@ class AuthBuffer:
             self.hostname = fact.host_name
 
         self.flags |= fact.flags
+        self.messages.append(fact.message)
         self._ingest(fact)
 
 def extract_src_ip(program, payload, message):
@@ -144,6 +148,9 @@ def extract_src_ip(program, payload, message):
 
     if message:
         m = IP_RE.search(message)
+        if m:
+            return m.group(0)
+        m = IPV6_RE.search(message)
         if m:
             return m.group(0)
 
@@ -215,6 +222,9 @@ def flush_buffer(cur, buf):
 
     else:
         outcome = "unknown"
+    
+    if outcome in ("unknown", "suspicious") and buf.failure_count > 0:
+        outcome = classify_with_llm(buf)  
 
     persist_auth_event(cur, buf, outcome)
 
