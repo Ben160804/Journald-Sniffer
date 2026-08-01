@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    ports:
+      - "8080:8000"
+    environment:
+      - DB_HOST=db
+      - DB_NAME=watchdog
+      - DB_USER=watchdog
+      - DB_PASS=watchdog
+      - GROQ_API_KEY=${GROQ_API_KEY}
+    depends_on:
+      - db
+    # Uncomment below only if running on a Linux host with systemd
+    # and you want /ingest to work from inside the container:
+    # volumes:
+    #   - /run/systemd/journal:/run/systemd/journal:ro
+    # privileged: true
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=watchdog
+      - POSTGRES_USER=watchdog
+      - POSTGRES_PASSWORD=watchdog
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+
+volumes:
+  pgdata:

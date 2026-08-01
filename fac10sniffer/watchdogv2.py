@@ -84,6 +84,6 @@ def watchdog():
     cur.close()
     closedbconn()
 
-
-watchdog()
+if __name__ == "__main__":
+    watchdog()
 
