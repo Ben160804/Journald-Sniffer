@@ -318,9 +318,3 @@ def parse_rawlog():
 if __name__ == "__main__":
     parse_rawlog()
 
-
-
-parse_rawlog()
-
-
-
