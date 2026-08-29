@@ -1,10 +1,10 @@
-# Journald-Sniffer (fac10sniffer)
+# Journald-Sniffer
 
-A Linux auth event ingestion and threat detection pipeline that reads from systemd journal (syslog facility 10 — `authpriv`), parses auth sessions, and alerts on suspicious patterns like brute force attacks.
+Linux auth event ingestion and threat detection pipeline. Reads systemd journal (facility 10 — `authpriv`), parses sudo/su/sshd sessions, classifies outcomes via keyword matching with Groq LLM fallback for ambiguous cases, and alerts on suspicious patterns. Exposed via FastAPI and containerized with Docker.
 
 ---
 
-## Architecture
+## How it works
 
 ```
 systemd journal
@@ -18,12 +18,15 @@ systemd journal
       │
       ▼
   watchdogv2.py     → alerts printed to stdout
+      │
+      ▼
+  app.py            → FastAPI endpoints
 ```
 
 ### Pipeline stages
 
 **Stage 1 — Ingestor (`ingestor.py`)**
-Reads journal entries filtered to `sudo`, `su`, and `sshd-session`. Stores each entry as a raw JSON blob in `raw_logs`. Uses the journal cursor as a bookmark to resume from where it left off on subsequent runs.
+Reads journal entries filtered to `sudo`, `su`, and `sshd-session`. Stores each entry as a raw JSON blob in `raw_logs`. Uses the systemd journal cursor as a bookmark to resume from where it left off on subsequent runs.
 
 **Stage 2 — Parser (`parser.py`)**
 Reads `raw_logs` and groups entries by `(program, pid)` into 60-second session windows (`AuthBuffer`). Classifies each message as `success`, `failure`, or `neutral` using keyword matching. For sessions that are ambiguous (`unknown` or `suspicious` with failures present), escalates to an LLM call. Flushes each session as one row into `auth_logs`.
@@ -36,6 +39,15 @@ Queries `auth_logs` for threat patterns over a 10-minute window:
 - `[BRUTE_FORCE]` — same src_ip with 5+ total failures
 - `[SCAN]` — same src_ip with 12+ neutral events and 0 successes
 - `[SUCCESS_AFTER_FAILURE]` — same src_ip/user with both failures and a success
+
+**Stage 5 — API (`app.py`)**
+FastAPI wrapper with six REST endpoints:
+- `GET /health` — service health check
+- `POST /ingest` — trigger journal ingestion (Linux host only)
+- `POST /parse` — parse raw logs into auth sessions
+- `POST /alerts` — run watchdog and return alerts as JSON
+- `GET /sessions` — query auth_logs with optional filters (src_ip, outcome, limit)
+- `GET /raw` — query raw_logs with optional program filter
 
 ---
 
@@ -152,6 +164,43 @@ python watchdogv2.py
 Or run the full pipeline:
 ```bash
 python main.py && python parser.py && python watchdogv2.py
+```
+
+---
+
+## Docker
+
+Build and run with docker-compose:
+```bash
+docker-compose up --build
+```
+
+The API will be available at `http://localhost:8080`.
+
+**Note:** `/ingest` requires a real Linux host with systemd journal. In Docker it will return 501 unless the container is privileged and shares `/run/systemd/journal` with the host. Uncomment the volume and privileged lines in `docker-compose.yml` if you need this.
+
+---
+
+## API usage
+
+```bash
+# Health check
+curl http://localhost:8080/health
+
+# Ingest journal entries
+curl -X POST http://localhost:8080/ingest
+
+# Parse raw logs
+curl -X POST http://localhost:8080/parse
+
+# Get alerts
+curl -X POST http://localhost:8080/alerts
+
+# Query sessions
+curl "http://localhost:8080/sessions?outcome=failure&limit=10"
+
+# Query raw logs
+curl "http://localhost:8080/raw?program=sshd-session&limit=10"
 ```
 
 ---
